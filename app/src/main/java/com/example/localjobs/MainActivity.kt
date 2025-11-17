@@ -328,7 +328,9 @@ fun AppRoot() {
                     if (currentUser != null) JobsScreen(currentUser = currentUser!!,
                         onLogout = { currentUser = null; screen = "login" },
                         onPostJob = { screen = "post" },
-                        onProfile = { screen = "profile" },
+                        onProfile = {
+                            if (!currentUser!!.isAdmin) screen = "profile"
+                        },
                         onViewApplications = { jobId -> selectedJobId = jobId; screen = "job_applications" },
                         filesDir = filesDir)
                 }
@@ -432,9 +434,12 @@ fun JobsScreen(
     Column(modifier = Modifier.fillMaxSize().padding(12.dp)) {
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
             Row {
-                Button(onClick = onProfile) { Text("Profile") }
-                Spacer(modifier = Modifier.width(8.dp))
+                if (!currentUser.isAdmin) {
+                    Button(onClick = onProfile) { Text("Profile") }
+                    Spacer(modifier = Modifier.width(8.dp))
+                }
             }
+
             Text("Jobs", style = MaterialTheme.typography.h5)
             Row {
                 if (currentUser.isAdmin) {
