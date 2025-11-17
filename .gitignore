@@ -1,0 +1,75 @@
+# === Android / Kotlin / Gradle ===
+
+# Gradle files
+.gradle/
+**/build/
+!gradle/wrapper/gradle-wrapper.jar
+/gradle/wrapper/gradle-wrapper.properties
+
+# Local configuration files
+/local.properties
+/.idea/
+*.iml
+
+# Android Studio captures & logs
+captures/
+*.log
+
+# OS files
+*.DS_Store
+Thumbs.db
+
+# Build output
+app/build/
+*/build/
+
+# Kotlin/Java generated code
+*.class
+*.jar
+*.apk
+*.ap_
+*.dex
+*.class
+
+# Misc binaries
+*.so
+*.swp
+*~.nib
+
+# Proguard
+/proguard/
+
+# Android tooling
+.build/
+.externalNativeBuild
+
+# Android Jetpack Navigation safe args (if used)
+/navigationSafeArgs/
+
+# IDE-specific
+.idea/*
+!.idea/gradle.xml
+!.idea/modules.xml
+!.idea/vcs.xml
+!.idea/workspace.xml
+!.idea/runConfigurations/
+*.iml
+
+# Keystore files (very important not to commit)
+*.jks
+*.keystore
+
+# Kotlin Native
+*.kexe
+*.klib
+
+# NDK
+obj/
+.externalNativeBuild/
+cmake-build-*/
+
+# Misc
+*.orig
+*~
+
+# --- End ---
