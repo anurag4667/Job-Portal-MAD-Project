@@ -39,16 +39,50 @@ data class Profile(
     val resumeLink: String
 )
 
+// --- Mock test models ---
+data class MockTest(
+    val id: String,
+    val title: String,
+    val description: String,
+    val timeLimitMinutes: Int?, // optional
+    val questions: List<Question>
+)
+
+data class Question(
+    val id: String,
+    val text: String,
+    val options: List<OptionItem>, // exactly 4
+    val correctIndex: Int, // 0..3
+    val marks: Int = 1
+)
+
+data class OptionItem(val index: Int, val text: String)
+
+data class TestResult(
+    val id: String,
+    val testId: String,
+    val userEmail: String,
+    val score: Int,
+    val maxScore: Int,
+    val percentage: Double,
+    val answers: List<Answer>,
+    val createdAt: Long = System.currentTimeMillis()
+)
+
+data class Answer(val questionId: String, val selectedIndex: Int, val correct: Boolean)
+
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
         // Ensure users file exists and admin seeded
         seedAdminIfNeeded()
-        // Ensure jobs, profiles & applications file exist
+        // Ensure jobs, profiles & applications & mocktests & testresults file exist
         ensureFileExists("jobs.json")
         ensureFileExists("profiles.json")
         ensureFileExists("applications.json")
+        ensureFileExists("mocktests.json")
+        ensureFileExists("testresults.json")
 
         setContent {
             MaterialTheme {
@@ -307,7 +341,535 @@ fun authenticate(filesDir: File, email: String, password: String): User? {
     return null
 }
 
+// ------------------------
+// Mock tests: storage & helpers (file-based JSON)
+// ------------------------
+
+private const val MOCK_TESTS_FILE = "mocktests.json"
+private const val TEST_RESULTS_FILE = "testresults.json"
+
+fun loadMockTests(filesDir: File): List<MockTest> {
+    val f = File(filesDir, MOCK_TESTS_FILE)
+    if (!f.exists()) return emptyList()
+    val content = f.readText()
+    val list = mutableListOf<MockTest>()
+    try {
+        val arr = JSONArray(content)
+        for (i in 0 until arr.length()) {
+            val obj = arr.getJSONObject(i)
+            val qArr = obj.getJSONArray("questions")
+            val questions = mutableListOf<Question>()
+            for (q in 0 until qArr.length()) {
+                val qObj = qArr.getJSONObject(q)
+                val optsArr = qObj.getJSONArray("options")
+                val opts = mutableListOf<OptionItem>()
+                for (o in 0 until optsArr.length()) {
+                    val oObj = optsArr.getJSONObject(o)
+                    opts.add(OptionItem(oObj.getInt("index"), oObj.getString("text")))
+                }
+                questions.add(
+                    Question(
+                        qObj.getString("id"),
+                        qObj.getString("text"),
+                        opts,
+                        qObj.getInt("correctIndex"),
+                        qObj.optInt("marks", 1)
+                    )
+                )
+            }
+            list.add(
+                MockTest(
+                    obj.getString("id"),
+                    obj.getString("title"),
+                    obj.optString("description", ""),
+                    if (obj.has("timeLimitMinutes")) obj.optInt("timeLimitMinutes") else null,
+                    questions
+                )
+            )
+        }
+    } catch (e: Exception) {
+        // ignore parse errors
+    }
+    return list
+}
+
+fun saveMockTests(filesDir: File, tests: List<MockTest>) {
+    val arr = JSONArray()
+    for (t in tests) {
+        val tObj = JSONObject()
+        tObj.put("id", t.id)
+        tObj.put("title", t.title)
+        tObj.put("description", t.description)
+        if (t.timeLimitMinutes != null) tObj.put("timeLimitMinutes", t.timeLimitMinutes)
+        val qArr = JSONArray()
+        for (q in t.questions) {
+            val qObj = JSONObject()
+            qObj.put("id", q.id)
+            qObj.put("text", q.text)
+            qObj.put("correctIndex", q.correctIndex)
+            qObj.put("marks", q.marks)
+            val optsArr = JSONArray()
+            for (o in q.options) {
+                val oObj = JSONObject()
+                oObj.put("index", o.index)
+                oObj.put("text", o.text)
+                optsArr.put(oObj)
+            }
+            qObj.put("options", optsArr)
+            qArr.put(qObj)
+        }
+        tObj.put("questions", qArr)
+        arr.put(tObj)
+    }
+    File(filesDir, MOCK_TESTS_FILE).writeText(arr.toString())
+}
+
+fun addMockTest(filesDir: File, test: MockTest) {
+    val tests = loadMockTests(filesDir).toMutableList()
+    tests.add(test)
+    saveMockTests(filesDir, tests)
+}
+
+fun getMockTestById(filesDir: File, id: String): MockTest? {
+    return loadMockTests(filesDir).firstOrNull { it.id == id }
+}
+
+// Test results helpers
+fun loadTestResults(filesDir: File): List<TestResult> {
+    val f = File(filesDir, TEST_RESULTS_FILE)
+    if (!f.exists()) return emptyList()
+    val content = f.readText()
+    val list = mutableListOf<TestResult>()
+    try {
+        val arr = JSONArray(content)
+        for (i in 0 until arr.length()) {
+            val obj = arr.getJSONObject(i)
+            val ansArr = obj.getJSONArray("answers")
+            val answers = mutableListOf<Answer>()
+            for (a in 0 until ansArr.length()) {
+                val aObj = ansArr.getJSONObject(a)
+                answers.add(Answer(aObj.getString("questionId"), aObj.getInt("selectedIndex"), aObj.optBoolean("correct", false)))
+            }
+            list.add(
+                TestResult(
+                    obj.getString("id"),
+                    obj.getString("testId"),
+                    obj.getString("userEmail"),
+                    obj.getInt("score"),
+                    obj.getInt("maxScore"),
+                    obj.getDouble("percentage"),
+                    answers,
+                    obj.optLong("createdAt", System.currentTimeMillis())
+                )
+            )
+        }
+    } catch (e: Exception) { }
+    return list
+}
+
+fun saveTestResults(filesDir: File, results: List<TestResult>) {
+    val arr = JSONArray()
+    for (r in results) {
+        val rObj = JSONObject()
+        rObj.put("id", r.id)
+        rObj.put("testId", r.testId)
+        rObj.put("userEmail", r.userEmail)
+        rObj.put("score", r.score)
+        rObj.put("maxScore", r.maxScore)
+        rObj.put("percentage", r.percentage)
+        rObj.put("createdAt", r.createdAt)
+        val aArr = JSONArray()
+        for (a in r.answers) {
+            val aObj = JSONObject()
+            aObj.put("questionId", a.questionId)
+            aObj.put("selectedIndex", a.selectedIndex)
+            aObj.put("correct", a.correct)
+            aArr.put(aObj)
+        }
+        rObj.put("answers", aArr)
+        arr.put(rObj)
+    }
+    File(filesDir, TEST_RESULTS_FILE).writeText(arr.toString())
+}
+
+fun addTestResult(filesDir: File, result: TestResult) {
+    val results = loadTestResults(filesDir).toMutableList()
+    results.add(result)
+    saveTestResults(filesDir, results)
+}
+
+fun getResultsForTest(filesDir: File, testId: String): List<TestResult> {
+    return loadTestResults(filesDir).filter { it.testId == testId }.sortedByDescending { it.createdAt }
+}
+
 // --- Compose UI ---
+
+@Composable
+fun MockTestsList(currentUser: User, filesDir: File, onBack: () -> Unit, onAttempt: (String) -> Unit, onCreate: () -> Unit, onViewResults: (String) -> Unit) {
+    val scope = rememberCoroutineScope()
+    var tests by remember { mutableStateOf<List<MockTest>>(emptyList()) }
+
+    LaunchedEffect(Unit) {
+        tests = loadMockTests(filesDir)
+    }
+
+    Column(modifier = Modifier.fillMaxSize().padding(12.dp)) {
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text("Mock Tests", style = MaterialTheme.typography.h5)
+            Row {
+                if (currentUser.isAdmin) {
+                    Button(onClick = onCreate) { Text("Post Mock Test") }
+                    Spacer(modifier = Modifier.width(8.dp))
+                }
+                OutlinedButton(onClick = onBack) { Text("Back") }
+            }
+        }
+        Spacer(modifier = Modifier.height(12.dp))
+
+        if (tests.isEmpty()) {
+            Text("No mock tests available.")
+        } else {
+            LazyColumn {
+                items(tests) { t ->
+                    Card(modifier = Modifier.fillMaxWidth().padding(8.dp), elevation = 4.dp) {
+                        Column(modifier = Modifier.padding(12.dp)) {
+                            Text(t.title, style = MaterialTheme.typography.h6)
+                            Text(t.description, style = MaterialTheme.typography.body2)
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Row {
+                                Button(onClick = { onAttempt(t.id) }) { Text("Attempt") }
+                                Spacer(modifier = Modifier.width(8.dp))
+                                if (currentUser.isAdmin) {
+                                    OutlinedButton(onClick = { onViewResults(t.id) }) { Text("Results") }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun AdminCreateMockTest(filesDir: File, onSaved: () -> Unit, onCancel: () -> Unit) {
+    val ctx = LocalContext.current
+    val scope = rememberCoroutineScope()
+
+    var title by remember { mutableStateOf("") }
+    var desc by remember { mutableStateOf("") }
+    var timeLimitStr by remember { mutableStateOf("") }
+    // dynamic list of questions builder
+    var questions by remember { mutableStateOf<List<Question>>(emptyList()) }
+
+    // helpers to add/remove question
+    fun addEmptyQuestion() {
+        val q = Question(
+            id = UUID.randomUUID().toString(),
+            text = "",
+            options = listOf(
+                OptionItem(0, ""),
+                OptionItem(1, ""),
+                OptionItem(2, ""),
+                OptionItem(3, "")
+            ),
+            correctIndex = 0,
+            marks = 1
+        )
+        questions = questions + q
+    }
+
+    Column(modifier = Modifier.fillMaxSize().padding(12.dp)) {
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text("Create Mock Test", style = MaterialTheme.typography.h5)
+            Row {
+                OutlinedButton(onClick = onCancel) { Text("Cancel") }
+            }
+        }
+        Spacer(modifier = Modifier.height(12.dp))
+        OutlinedTextField(value = title, onValueChange = { title = it }, label = { Text("Title") }, modifier = Modifier.fillMaxWidth())
+        Spacer(modifier = Modifier.height(8.dp))
+        OutlinedTextField(value = desc, onValueChange = { desc = it }, label = { Text("Description") }, modifier = Modifier.fillMaxWidth())
+        Spacer(modifier = Modifier.height(8.dp))
+        OutlinedTextField(value = timeLimitStr, onValueChange = { timeLimitStr = it }, label = { Text("Time limit (minutes, optional)") }, modifier = Modifier.fillMaxWidth())
+        Spacer(modifier = Modifier.height(12.dp))
+
+        Text("Questions", style = MaterialTheme.typography.h6)
+        Spacer(modifier = Modifier.height(8.dp))
+
+        // Questions editor
+        LazyColumn(modifier = Modifier.weight(1f)) {
+            items(questions) { q ->
+                var qText by remember { mutableStateOf(q.text) }
+                // local copy of options
+                var opt0 by remember { mutableStateOf(q.options.getOrNull(0)?.text ?: "") }
+                var opt1 by remember { mutableStateOf(q.options.getOrNull(1)?.text ?: "") }
+                var opt2 by remember { mutableStateOf(q.options.getOrNull(2)?.text ?: "") }
+                var opt3 by remember { mutableStateOf(q.options.getOrNull(3)?.text ?: "") }
+                var correct by remember { mutableStateOf(q.correctIndex) }
+                var marks by remember { mutableStateOf(q.marks.toString()) }
+
+                Card(modifier = Modifier.fillMaxWidth().padding(8.dp), elevation = 2.dp) {
+                    Column(modifier = Modifier.padding(8.dp)) {
+                        OutlinedTextField(value = qText, onValueChange = {
+                            qText = it
+                            questions = questions.map { if (it.id == q.id) it.copy(text = qText) else it }
+                        }, label = { Text("Question") }, modifier = Modifier.fillMaxWidth())
+                        Spacer(modifier = Modifier.height(8.dp))
+                        OutlinedTextField(value = opt0, onValueChange = {
+                            opt0 = it
+                            questions = questions.map { if (it.id == q.id) it.copy(options = listOf(OptionItem(0, opt0), OptionItem(1, opt1), OptionItem(2, opt2), OptionItem(3, opt3))) else it }
+                        }, label = { Text("Option A") }, modifier = Modifier.fillMaxWidth())
+                        Spacer(modifier = Modifier.height(4.dp))
+                        OutlinedTextField(value = opt1, onValueChange = {
+                            opt1 = it
+                            questions = questions.map { if (it.id == q.id) it.copy(options = listOf(OptionItem(0, opt0), OptionItem(1, opt1), OptionItem(2, opt2), OptionItem(3, opt3))) else it }
+                        }, label = { Text("Option B") }, modifier = Modifier.fillMaxWidth())
+                        Spacer(modifier = Modifier.height(4.dp))
+                        OutlinedTextField(value = opt2, onValueChange = {
+                            opt2 = it
+                            questions = questions.map { if (it.id == q.id) it.copy(options = listOf(OptionItem(0, opt0), OptionItem(1, opt1), OptionItem(2, opt2), OptionItem(3, opt3))) else it }
+                        }, label = { Text("Option C") }, modifier = Modifier.fillMaxWidth())
+                        Spacer(modifier = Modifier.height(4.dp))
+                        OutlinedTextField(value = opt3, onValueChange = {
+                            opt3 = it
+                            questions = questions.map { if (it.id == q.id) it.copy(options = listOf(OptionItem(0, opt0), OptionItem(1, opt1), OptionItem(2, opt2), OptionItem(3, opt3))) else it }
+                        }, label = { Text("Option D") }, modifier = Modifier.fillMaxWidth())
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("Correct option: ")
+                            Spacer(modifier = Modifier.width(8.dp))
+                            DropdownMenuCorrectIndex(selected = correct, onSelected = {
+                                correct = it
+                                questions = questions.map { if (it.id == q.id) it.copy(correctIndex = correct) else it }
+                            })
+                            Spacer(modifier = Modifier.width(12.dp))
+                            OutlinedTextField(value = marks, onValueChange = {
+                                marks = it.filter { ch -> ch.isDigit() }
+                                val markInt = marks.toIntOrNull() ?: 1
+                                questions = questions.map { if (it.id == q.id) it.copy(marks = markInt) else it }
+                            }, label = { Text("Marks") }, modifier = Modifier.width(90.dp))
+                        }
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Row {
+                            OutlinedButton(onClick = {
+                                // remove question
+                                questions = questions.filterNot { it.id == q.id }
+                            }) { Text("Remove") }
+                        }
+                    }
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+        Row {
+            Button(onClick = { addEmptyQuestion() }) { Text("Add Question") }
+            Spacer(modifier = Modifier.width(8.dp))
+            Button(onClick = {
+                // validate and save
+                if (title.isBlank()) { Toast.makeText(ctx, "Please enter title", Toast.LENGTH_SHORT).show(); return@Button }
+                if (questions.isEmpty()) { Toast.makeText(ctx, "Add at least one question", Toast.LENGTH_SHORT).show(); return@Button }
+                // basic validation: each question must have 4 non-empty options
+                for (q in questions) {
+                    if (q.text.isBlank()) { Toast.makeText(ctx, "Each question must have text", Toast.LENGTH_SHORT).show(); return@Button }
+                    if (q.options.size != 4 || q.options.any { it.text.isBlank() }) { Toast.makeText(ctx, "Each question must have 4 options filled", Toast.LENGTH_SHORT).show(); return@Button }
+                    if (q.correctIndex !in 0..3) { Toast.makeText(ctx, "Correct index must be 0..3", Toast.LENGTH_SHORT).show(); return@Button }
+                }
+                val timeLimit = timeLimitStr.toIntOrNull()
+                val test = MockTest(UUID.randomUUID().toString(), title.trim(), desc.trim(), timeLimit, questions)
+                scope.launch(Dispatchers.IO) {
+                    addMockTest(filesDir, test)
+                    launch(Dispatchers.Main) {
+                        Toast.makeText(ctx, "Mock test created", Toast.LENGTH_SHORT).show()
+                        onSaved()
+                    }
+                }
+            }) { Text("Save Test") }
+        }
+    }
+}
+
+@Composable
+fun DropdownMenuCorrectIndex(selected: Int, onSelected: (Int) -> Unit) {
+    var expanded by remember { mutableStateOf(false) }
+    val options = listOf("A", "B", "C", "D")
+    Box {
+        OutlinedButton(onClick = { expanded = true }) {
+            Text(options.getOrNull(selected) ?: "A")
+        }
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            options.forEachIndexed { idx, label ->
+                DropdownMenuItem(onClick = { expanded = false; onSelected(idx) }) {
+                    Text(label)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun AttemptMockTest(currentUser: User, testId: String, filesDir: File, onBack: () -> Unit, onResult: (TestResult) -> Unit) {
+    val ctx = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var test by remember { mutableStateOf<MockTest?>(null) }
+
+    // map questionId -> selectedIndex
+    var answersState by remember { mutableStateOf<Map<String, Int>>(emptyMap()) }
+    var loading by remember { mutableStateOf(true) }
+
+    LaunchedEffect(testId) {
+        test = getMockTestById(filesDir, testId)
+        loading = false
+    }
+
+    if (loading) {
+        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+        return
+    }
+
+    val t = test
+    if (t == null) {
+        Column(modifier = Modifier.fillMaxSize().padding(12.dp)) {
+            Text("Test not found")
+            Spacer(modifier = Modifier.height(8.dp))
+            OutlinedButton(onClick = onBack) { Text("Back") }
+        }
+        return
+    }
+
+    Column(modifier = Modifier.fillMaxSize().padding(12.dp)) {
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text(t.title, style = MaterialTheme.typography.h5)
+            OutlinedButton(onClick = onBack) { Text("Back") }
+        }
+        Spacer(modifier = Modifier.height(8.dp))
+        Text(t.description)
+        Spacer(modifier = Modifier.height(8.dp))
+
+        LazyColumn(modifier = Modifier.weight(1f)) {
+            items(t.questions) { q ->
+                Card(modifier = Modifier.fillMaxWidth().padding(8.dp), elevation = 2.dp) {
+                    Column(modifier = Modifier.padding(8.dp)) {
+                        Text(q.text, style = MaterialTheme.typography.subtitle1)
+                        Spacer(modifier = Modifier.height(8.dp))
+                        q.options.forEach { o ->
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                RadioButton(
+                                    selected = (answersState[q.id] ?: -1) == o.index,
+                                    onClick = { answersState = answersState.plus(q.id to o.index) }
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(o.text)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+        Button(onClick = {
+            // Build answers and score
+            val userAnswers = t.questions.map { q ->
+                val sel = answersState[q.id]
+                val selectedIndex = sel ?: -1
+                val correct = selectedIndex == q.correctIndex
+                Pair(q, selectedIndex)
+            }
+
+            // compute score: unanswered counted as wrong
+            var score = 0
+            var maxScore = 0
+            val answersSaved = mutableListOf<Answer>()
+            for ((q, sel) in userAnswers) {
+                maxScore += q.marks
+                val correct = sel == q.correctIndex
+                if (correct) score += q.marks
+                answersSaved.add(Answer(q.id, if (sel < 0) -1 else sel, correct))
+            }
+            val perc = if (maxScore == 0) 0.0 else (score.toDouble() / maxScore.toDouble()) * 100.0
+            val result = TestResult(UUID.randomUUID().toString(), t.id, currentUser.email, score, maxScore, perc, answersSaved, System.currentTimeMillis())
+            scope.launch(Dispatchers.IO) {
+                addTestResult(filesDir, result)
+                launch(Dispatchers.Main) {
+                    onResult(result)
+                }
+            }
+        }, modifier = Modifier.fillMaxWidth()) {
+            Text("Submit and See Score")
+        }
+    }
+}
+
+@Composable
+fun MockTestResultScreen(result: TestResult, filesDir: File, onBack: () -> Unit) {
+    val test = getMockTestById(filesDir, result.testId)
+    Column(modifier = Modifier.fillMaxSize().padding(12.dp)) {
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text("Result", style = MaterialTheme.typography.h5)
+            OutlinedButton(onClick = onBack) { Text("Back") }
+        }
+        Spacer(modifier = Modifier.height(12.dp))
+        Text("Score: ${result.score} / ${result.maxScore}", style = MaterialTheme.typography.h6)
+        Text("Percentage: ${"%.2f".format(result.percentage)}%", style = MaterialTheme.typography.body1)
+        Spacer(modifier = Modifier.height(12.dp))
+        Text("Question-wise:", style = MaterialTheme.typography.subtitle1)
+        Spacer(modifier = Modifier.height(8.dp))
+
+        LazyColumn {
+            items(result.answers) { ans ->
+                val q = test?.questions?.firstOrNull { it.id == ans.questionId }
+                Card(modifier = Modifier.fillMaxWidth().padding(8.dp), elevation = 2.dp) {
+                    Column(modifier = Modifier.padding(8.dp)) {
+                        Text(q?.text ?: "Question")
+                        Spacer(modifier = Modifier.height(6.dp))
+                        val selectedText = q?.options?.firstOrNull { it.index == ans.selectedIndex }?.text ?: "No answer"
+                        val correctText = q?.options?.firstOrNull { it.index == q.correctIndex }?.text ?: "N/A"
+                        Text("Your answer: $selectedText")
+                        Text("Correct answer: $correctText")
+                        Text(if (ans.correct) "Correct" else "Wrong")
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun ViewMockTestResults(filesDir: File, testId: String, onBack: () -> Unit) {
+    val scope = rememberCoroutineScope()
+    var results by remember { mutableStateOf<List<TestResult>>(emptyList()) }
+    LaunchedEffect(testId) {
+        results = getResultsForTest(filesDir, testId)
+    }
+
+    Column(modifier = Modifier.fillMaxSize().padding(12.dp)) {
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text("Test Results", style = MaterialTheme.typography.h5)
+            OutlinedButton(onClick = onBack) { Text("Back") }
+        }
+        Spacer(modifier = Modifier.height(12.dp))
+        if (results.isEmpty()) {
+            Text("No attempts yet.")
+        } else {
+            LazyColumn {
+                items(results) { r ->
+                    Card(modifier = Modifier.fillMaxWidth().padding(8.dp), elevation = 2.dp) {
+                        Column(modifier = Modifier.padding(8.dp)) {
+                            Text("User: ${r.userEmail}")
+                            Text("Score: ${r.score} / ${r.maxScore}")
+                            Text("Percent: ${"%.2f".format(r.percentage)}%")
+                            Text("At: ${Date(r.createdAt)}")
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// --- Main app root with navigation state updated to include mock tests ---
 
 @Composable
 fun AppRoot() {
@@ -316,6 +878,8 @@ fun AppRoot() {
     var currentUser by remember { mutableStateOf<User?>(null) }
     var screen by remember { mutableStateOf("login") }
     var selectedJobId by remember { mutableStateOf<String?>(null) }
+    var selectedTestId by remember { mutableStateOf<String?>(null) }
+    var lastResult by remember { mutableStateOf<TestResult?>(null) }
 
     val scaffoldState = rememberScaffoldState()
 
@@ -332,6 +896,7 @@ fun AppRoot() {
                             if (!currentUser!!.isAdmin) screen = "profile"
                         },
                         onViewApplications = { jobId -> selectedJobId = jobId; screen = "job_applications" },
+                        onMockTests = { selectedTestId = null; screen = "mock_tests" },
                         filesDir = filesDir)
                 }
                 "post" -> PostJobScreen(onPosted = { screen = "jobs" }, onCancel = { screen = "jobs" }, filesDir = filesDir)
@@ -344,6 +909,36 @@ fun AppRoot() {
                 "job_applications" -> {
                     val jid = selectedJobId
                     if (currentUser != null && jid != null) JobApplicationsScreen(currentUser = currentUser!!, jobId = jid, onBack = { screen = "jobs" }, filesDir = filesDir)
+                }
+                // Mock tests screens
+                "mock_tests" -> {
+                    if (currentUser != null) MockTestsList(
+                        currentUser = currentUser!!,
+                        filesDir = filesDir,
+                        onBack = { screen = "jobs" },
+                        onAttempt = { tid -> selectedTestId = tid; screen = "attempt_test" },
+                        onCreate = { screen = "create_test" },
+                        onViewResults = { tid -> selectedTestId = tid; screen = "view_test_results" }
+                    )
+                }
+                "create_test" -> {
+                    AdminCreateMockTest(filesDir = filesDir, onSaved = { screen = "mock_tests" }, onCancel = { screen = "mock_tests" })
+                }
+                "attempt_test" -> {
+                    val tid = selectedTestId
+                    if (currentUser != null && tid != null) AttemptMockTest(currentUser = currentUser!!, testId = tid, filesDir = filesDir, onBack = { screen = "mock_tests" }, onResult = {
+                        lastResult = it
+                        screen = "test_result"
+                    })
+                }
+                "test_result" -> {
+                    val res = lastResult
+                    if (res != null) MockTestResultScreen(res, filesDir = filesDir, onBack = { screen = "mock_tests" })
+                    else screen = "mock_tests"
+                }
+                "view_test_results" -> {
+                    val tid = selectedTestId
+                    if (tid != null) ViewMockTestResults(filesDir = filesDir, testId = tid, onBack = { screen = "mock_tests" })
                 }
             }
         }
@@ -418,6 +1013,7 @@ fun JobsScreen(
     onPostJob: () -> Unit,
     onProfile: () -> Unit,
     onViewApplications: (String) -> Unit,
+    onMockTests: () -> Unit,
     filesDir: File
 ) {
     val ctx = LocalContext.current
@@ -446,6 +1042,8 @@ fun JobsScreen(
                     Button(onClick = onPostJob) { Text("Post Job") }
                     Spacer(modifier = Modifier.width(8.dp))
                 }
+                Button(onClick = onMockTests) { Text("Mock Tests") }
+                Spacer(modifier = Modifier.width(8.dp))
                 OutlinedButton(onClick = { onLogout() }) { Text("Logout") }
             }
         }
@@ -516,13 +1114,20 @@ fun PostJobScreen(onPosted: () -> Unit, onCancel: () -> Unit, filesDir: File) {
         Spacer(modifier = Modifier.height(16.dp))
         Row {
             Button(onClick = {
-                if (title.isBlank() || company.isBlank() || desc.isBlank()) { Toast.makeText(ctx, "Fill all fields", Toast.LENGTH_SHORT).show(); return@Button }
+                if (title.isBlank() || company.isBlank() || desc.isBlank()) {
+                    Toast.makeText(ctx, "Fill all fields", Toast.LENGTH_SHORT).show()
+                    return@Button
+                }
                 val job = Job(UUID.randomUUID().toString(), title.trim(), company.trim(), desc.trim(), salary.trim())
-                scope.launch(Dispatchers.IO) {
-                    addJob(filesDir, job)
-                    launch(Dispatchers.Main) { onPosted() }
+                scope.launch {
+                    // do IO on IO dispatcher
+                    kotlinx.coroutines.withContext(Dispatchers.IO) {
+                        addJob(filesDir, job)
+                    }
+                    onPosted() // back on main because coroutine launched from compose scope runs on Main by default
                 }
             }) { Text("Post") }
+
             Spacer(modifier = Modifier.width(8.dp))
             OutlinedButton(onClick = onCancel) { Text("Cancel") }
         }
@@ -670,14 +1275,15 @@ fun EditProfileScreen(currentUser: User, onSaved: () -> Unit, onCancel: () -> Un
                     return@Button
                 }
                 val profile = Profile(currentUser.email, name.trim(), college.trim(), dob.trim(), cgpa.trim(), resumeLink.trim())
-                scope.launch(Dispatchers.IO) {
-                    upsertProfile(filesDir, profile)
-                    launch(Dispatchers.Main) {
-                        Toast.makeText(ctx, "Profile saved", Toast.LENGTH_SHORT).show()
-                        onSaved()
+                scope.launch {
+                    kotlinx.coroutines.withContext(Dispatchers.IO) {
+                        upsertProfile(filesDir, profile)
                     }
+                    Toast.makeText(ctx, "Profile saved", Toast.LENGTH_SHORT).show()
+                    onSaved()
                 }
             }) { Text("Save") }
+
 
             Spacer(modifier = Modifier.width(8.dp))
             OutlinedButton(onClick = onCancel) { Text("Cancel") }
