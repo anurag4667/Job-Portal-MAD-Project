@@ -7,7 +7,6 @@ data class Job(
     val id: String,
     val title: String,
     val company: String,
-    val description: String,
     val salary: String
 )
 data class Profile(
