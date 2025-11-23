@@ -97,7 +97,6 @@ fun JobsScreen(
                             Text(job.title, style = MaterialTheme.typography.h6)
                             Text(job.company, style = MaterialTheme.typography.subtitle2)
                             Spacer(modifier = Modifier.height(6.dp))
-                            Text(job.description)
                             Spacer(modifier = Modifier.height(6.dp))
                             Text("Salary: ${job.salary}", style = MaterialTheme.typography.subtitle1)
                             Spacer(modifier = Modifier.height(8.dp))
@@ -136,7 +135,6 @@ fun PostJobScreen(onPosted: () -> Unit, onCancel: () -> Unit, filesDir: File) {
     val ctx = LocalContext.current
     var title by remember { mutableStateOf("") }
     var company by remember { mutableStateOf("") }
-    var desc by remember { mutableStateOf("") }
     var salary by remember { mutableStateOf("") }
     val scope = rememberCoroutineScope()
 
@@ -147,17 +145,15 @@ fun PostJobScreen(onPosted: () -> Unit, onCancel: () -> Unit, filesDir: File) {
         Spacer(modifier = Modifier.height(8.dp))
         OutlinedTextField(value = company, onValueChange = { company = it }, label = { Text("Company") }, modifier = Modifier.fillMaxWidth())
         Spacer(modifier = Modifier.height(8.dp))
-        OutlinedTextField(value = desc, onValueChange = { desc = it }, label = { Text("Description") }, modifier = Modifier.fillMaxWidth())
-        Spacer(modifier = Modifier.height(8.dp))
         OutlinedTextField(value = salary, onValueChange = { salary = it }, label = { Text("Salary") }, modifier = Modifier.fillMaxWidth())
         Spacer(modifier = Modifier.height(16.dp))
         Row {
             Button(onClick = {
-                if (title.isBlank() || company.isBlank() || desc.isBlank()) {
+                if (title.isBlank() || company.isBlank() ) {
                     Toast.makeText(ctx, "Fill all fields", Toast.LENGTH_SHORT).show()
                     return@Button
                 }
-                val job = Job(UUID.randomUUID().toString(), title.trim(), company.trim(), desc.trim(), salary.trim())
+                val job = Job(UUID.randomUUID().toString(), title.trim(), company.trim(),  salary.trim())
                 scope.launch {
                     // do IO on IO dispatcher
                     kotlinx.coroutines.withContext(Dispatchers.IO) {
@@ -201,8 +197,6 @@ fun JobApplicationsScreen(currentUser: User, jobId: String, onBack: () -> Unit, 
                 Column(modifier = Modifier.padding(12.dp)) {
                     Text(j.title, style = MaterialTheme.typography.h6)
                     Text(j.company, style = MaterialTheme.typography.subtitle2)
-                    Spacer(modifier = Modifier.height(6.dp))
-                    Text(j.description)
                     Spacer(modifier = Modifier.height(6.dp))
                     Text("Salary: ${j.salary}")
                 }

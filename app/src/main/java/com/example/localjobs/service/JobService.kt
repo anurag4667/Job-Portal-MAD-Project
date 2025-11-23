@@ -19,7 +19,6 @@ fun loadJobs(filesDir: File): List<Job> {
                     obj.getString("id"),
                     obj.getString("title"),
                     obj.getString("company"),
-                    obj.getString("description"),
                     obj.optString("salary", "Not specified")
                 )
             )
@@ -37,7 +36,6 @@ fun saveJobs(filesDir: File, jobs: List<Job>) {
         obj.put("id", j.id)
         obj.put("title", j.title)
         obj.put("company", j.company)
-        obj.put("description", j.description)
         obj.put("salary", j.salary)
         arr.put(obj)
     }
