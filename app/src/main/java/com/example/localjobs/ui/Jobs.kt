@@ -43,7 +43,7 @@ import kotlinx.coroutines.launch
 import java.io.File
 import java.util.UUID
 import kotlin.collections.any
-
+import kotlinx.coroutines.withContext
 
 @Composable
 fun JobsScreen(
@@ -62,7 +62,9 @@ fun JobsScreen(
 
     // load jobs & applications
     LaunchedEffect(Unit) {
-        jobs = loadJobs(filesDir)
+        jobs = withContext(Dispatchers.IO) {
+            loadJobs(filesDir)   // ✅ runs on IO thread
+        }
         appliedMap = loadApplications(filesDir).toMap()
     }
 
@@ -180,7 +182,9 @@ fun JobApplicationsScreen(currentUser: User, jobId: String, onBack: () -> Unit, 
     var profiles by remember { mutableStateOf<List<Profile>>(emptyList()) }
 
     LaunchedEffect(jobId) {
-        job = loadJobs(filesDir).firstOrNull { it.id == jobId }
+        job = withContext(Dispatchers.IO) {
+            loadJobs(filesDir).firstOrNull { it.id == jobId }   // ✅ runs on IO thread
+        }
         applicants = getApplicantsForJob(filesDir, jobId)
         profiles = applicants.mapNotNull { getProfileForEmail(filesDir, it) }
     }
